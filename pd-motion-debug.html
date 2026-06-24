@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>PD Measurement — Motion Debug</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#0c0c12;color:#e2e2ee;font-family:'Courier New',monospace;padding:12px;display:flex;flex-direction:column;align-items:center;min-height:100vh;}
+.container{width:100%;max-width:420px;}
+h1{font-size:16px;font-weight:900;background:linear-gradient(90deg,#00e5ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin:12px 0 4px;}
+.sub{font-size:10px;color:#666;margin-bottom:12px;}
+.instruction{background:#0a2e2e;border:1px solid #00e57766;border-radius:10px;padding:12px;margin-bottom:12px;font-size:11px;line-height:1.6;color:#a78bfa;}
+.btn{width:100%;padding:14px;border-radius:10px;border:none;font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer;font-family:inherit;margin-bottom:8px;transition:all .2s;}
+.btn-primary{background:linear-gradient(135deg,#00e5ff,#a78bfa);color:#000;}
+.btn-secondary{background:#1e1e2e;border:1px solid #00e5ff66;color:#00e5ff;font-size:12px;padding:10px;}
+.btn-primary:active{transform:scale(.95);}
+.video-container{position:relative;width:100%;max-width:100%;border-radius:10px;overflow:hidden;background:#000;margin-bottom:12px;border:2px solid #00e57766;}
+#video{width:100%;height:auto;display:block;}
+#canvas-overlay{position:absolute;top:0;left:0;width:100%;height:100%;}
+.status{text-align:center;padding:10px;background:#0a1a1a;border-radius:8px;margin:8px 0;font-size:11px;color:#00e5ff;font-weight:700;}
+.stat-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0;}
+.stat-item{background:#1e1e2e;padding:8px;border-radius:6px;text-align:center;font-size:11px;}
+.stat-label{color:#666;font-size:9px;margin-bottom:3px;}
+.stat-value{color:#00e5ff;font-weight:700;font-size:13px;}
+.movement-scale{background:#1e1e2e;border-radius:8px;padding:8px;margin:8px 0;}
+.scale-label{font-size:10px;color:#666;margin-bottom:4px;}
+.scale-bar{height:20px;background:#0a1a1a;border-radius:6px;position:relative;overflow:hidden;}
+.scale-indicator{height:100%;background:linear-gradient(90deg,#00e5ff,#a78bfa);width:0%;transition:width .1s;}
+.hidden{display:none!important;}
+.card{background:#13131e;border:1px solid #1e1e2e;border-radius:10px;padding:12px;margin:8px 0;font-size:11px;}
+.result-big{font-size:36px;font-weight:900;color:#00e5ff;text-align:center;margin:12px 0;}
+</style>
+</head>
+<body>
+
+<div class="container">
+  
+  <div id="screen-start" class="screen">
+    <h1>PD MEASUREMENT</h1>
+    <div class="sub">Motion-Based with Real-Time Feedback</div>
+    
+    <div class="instruction">
+      📱 <strong>Hold phone 30cm from face</strong><br>
+      👁️ <strong>Look straight ahead</strong><br>
+      ✅ <strong>Tap START when ready</strong><br>
+      ↔️ <strong>Move LEFT-RIGHT smoothly</strong><br>
+      📊 <strong>Watch green circles show detected pupils</strong>
+    </div>
+    
+    <button class="btn btn-primary" id="btn-start">▶ START RECORDING</button>
+  </div>
+  
+  <div id="screen-recording" class="screen hidden">
+    <h1>RECORDING</h1>
+    
+    <div class="video-container">
+      <video id="video" autoplay playsinline muted></video>
+      <canvas id="canvas-overlay"></canvas>
+    </div>
+    
+    <div class="status" id="record-status">Moving... detecting pupils...</div>
+    
+    <div class="movement-scale">
+      <div class="scale-label">MOVEMENT AMPLITUDE</div>
+      <div class="scale-bar"><div class="scale-indicator" id="movement-indicator"></div></div>
+      <div style="text-align:center;font-size:9px;color:#666;margin-top:4px;">
+        <span id="movement-value">0</span>px lateral motion
+      </div>
+    </div>
+    
+    <div class="stat-row">
+      <div class="stat-item">
+        <div class="stat-label">Frames</div>
+        <div class="stat-value" id="frame-count">0/20</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Detected Eyes</div>
+        <div class="stat-value" id="detection-rate">0%</div>
+      </div>
+    </div>
+    
+    <button class="btn btn-secondary" id="btn-stop">✓ STOP & ANALYZE</button>
+  </div>
+  
+  <div id="screen-results" class="screen hidden">
+    <h1>RESULTS</h1>
+    
+    <div class="card" style="text-align:center;">
+      <div style="font-size:10px;color:#666;margin-bottom:6px;">BINOCULAR PD</div>
+      <div class="result-big" id="result-pd">—</div>
+      <div style="color:#888;font-size:10px;">mm</div>
+    </div>
+    
+    <div class="stat-row">
+      <div class="stat-item">
+        <div class="stat-label">Average</div>
+        <div class="stat-value" id="stat-avg">—</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-label">Std Dev</div>
+        <div class="stat-value" id="stat-std">—</div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div style="color:#00e5ff;font-weight:700;margin-bottom:6px;">All Measurements</div>
+      <div id="result-all" style="font-size:9px;color:#888;line-height:1.8;max-height:200px;overflow-y:auto;"></div>
+    </div>
+    
+    <button class="btn btn-primary" id="btn-again">↻ TRY AGAIN</button>
+  </div>
+
+</div>
+
+<video id="hidden-video" style="display:none;"></video>
+<canvas id="capture-canvas" style="display:none;"></canvas>
+
+<script>
+const $ = id => document.getElementById(id);
+const S = {
+  distMM: 300,
+  focalMM: 5.31,
+  sensorWidthMM: 7.21,
+  frames: [],
+  measurements: [],
+  recording: false,
+  lastCenterX: null
+};
+
+let video, overlayCanvas, overlayCtx, captureCanvas, captureCtx;
+
+function init() {
+  video = $('video');
+  overlayCanvas = $('canvas-overlay');
+  overlayCtx = overlayCanvas.getContext('2d');
+  captureCanvas = $('capture-canvas');
+  captureCtx = captureCanvas.getContext('2d');
+  
+  $('btn-start').addEventListener('click', startRecording);
+  $('btn-stop').addEventListener('click', stopRecording);
+  $('btn-again').addEventListener('click', () => {
+    S.frames = [];
+    S.measurements = [];
+    show('screen-start');
+  });
+}
+
+function show(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  $(screenId).classList.remove('hidden');
+}
+
+async function startRecording() {
+  show('screen-recording');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' }
+    });
+    video.srcObject = stream;
+    
+    video.onloadedmetadata = () => {
+      setupCanvas();
+      setTimeout(beginCapture, 500);
+    };
+  } catch (e) {
+    alert('Camera error: ' + e.message);
+    show('screen-start');
+  }
+}
+
+function setupCanvas() {
+  overlayCanvas.width = video.videoWidth;
+  overlayCanvas.height = video.videoHeight;
+  captureCanvas.width = video.videoWidth;
+  captureCanvas.height = video.videoHeight;
+  S.videoW = video.videoWidth;
+  S.videoH = video.videoHeight;
+}
+
+function beginCapture() {
+  S.recording = true;
+  S.frames = [];
+  S.measurements = [];
+  let frameCount = 0;
+  const startTime = Date.now();
+  
+  const captureInterval = setInterval(() => {
+    if (!S.recording) {
+      clearInterval(captureInterval);
+      return;
+    }
+    
+    // Capture and analyze frame
+    captureCtx.drawImage(video, 0, 0);
+    const imageData = captureCtx.getImageData(0, 0, captureCanvas.width, captureCanvas.height);
+    
+    const measurement = detectPupils(imageData);
+    S.frames.push({ imageData, measurement });
+    
+    if (measurement) {
+      S.measurements.push(measurement);
+    }
+    
+    frameCount++;
+    $('frame-count').textContent = frameCount + '/20';
+    $('detection-rate').textContent = Math.round(S.measurements.length / frameCount * 100) + '%';
+    
+    // Draw on overlay
+    drawDetection(measurement);
+    
+    // Update movement scale
+    if (measurement && measurement.centerX !== undefined) {
+      updateMovementScale(measurement.centerX);
+    }
+    
+    if (frameCount >= 20) {
+      stopRecording();
+    }
+  }, 150);
+}
+
+function detectPupils(imageData) {
+  const data = imageData.data;
+  const w = captureCanvas.width;
+  const h = captureCanvas.height;
+  
+  // Find dark pixels in upper half
+  let darkPixels = [];
+  const searchH = Math.floor(h * 0.6);
+  
+  for (let i = 0; i < searchH * w * 4; i += 4) {
+    const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
+    if (brightness < 140) {
+      const pixIdx = i / 4;
+      const py = Math.floor(pixIdx / w);
+      const px = pixIdx % w;
+      darkPixels.push({ x: px, y: py });
+    }
+  }
+  
+  if (darkPixels.length < 20) return null;
+  
+  // Cluster
+  let clusters = [];
+  let used = new Set();
+  
+  darkPixels.forEach((p, idx) => {
+    if (used.has(idx)) return;
+    let cluster = [p];
+    used.add(idx);
+    
+    for (let j = 0; j < darkPixels.length; j++) {
+      if (used.has(j)) continue;
+      const p2 = darkPixels[j];
+      const dist = Math.sqrt((p.x-p2.x)**2 + (p.y-p2.y)**2);
+      if (dist < 40) {
+        cluster.push(p2);
+        used.add(j);
+      }
+    }
+    if (cluster.length > 5) clusters.push(cluster);
+  });
+  
+  if (clusters.length < 2) return null;
+  clusters.sort((a, b) => b.length - a.length);
+  
+  const centroid = c => {
+    let sx = 0, sy = 0;
+    c.forEach(p => {sx += p.x; sy += p.y;});
+    return {x: sx/c.length, y: sy/c.length};
+  };
+  
+  const c1 = centroid(clusters[0]);
+  const c2 = centroid(clusters[1]);
+  const eyes = [c1, c2].sort((a, b) => a.x - b.x);
+  
+  const pdPx = Math.abs(eyes[1].x - eyes[0].x);
+  const mmPerPx = S.distMM * S.sensorWidthMM / w / S.focalMM;
+  const pdMM = pdPx * mmPerPx;
+  
+  return { pdMM, pdPx, centerX: (eyes[0].x + eyes[1].x) / 2, eye1: eyes[0], eye2: eyes[1] };
+}
+
+function drawDetection(measurement) {
+  overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+  
+  if (!measurement) return;
+  
+  // Draw detected eye positions as green circles
+  overlayCtx.strokeStyle = '#00ff00';
+  overlayCtx.lineWidth = 3;
+  overlayCtx.beginPath();
+  overlayCtx.arc(measurement.eye1.x, measurement.eye1.y, 20, 0, Math.PI * 2);
+  overlayCtx.stroke();
+  
+  overlayCtx.beginPath();
+  overlayCtx.arc(measurement.eye2.x, measurement.eye2.y, 20, 0, Math.PI * 2);
+  overlayCtx.stroke();
+  
+  // Draw line between pupils
+  overlayCtx.strokeStyle = '#00ff0066';
+  overlayCtx.lineWidth = 2;
+  overlayCtx.beginPath();
+  overlayCtx.moveTo(measurement.eye1.x, measurement.eye1.y);
+  overlayCtx.lineTo(measurement.eye2.x, measurement.eye2.y);
+  overlayCtx.stroke();
+}
+
+function updateMovementScale(centerX) {
+  if (S.lastCenterX === null) {
+    S.lastCenterX = centerX;
+    return;
+  }
+  
+  const motion = Math.abs(centerX - S.lastCenterX);
+  const maxMotion = 100; // pixels
+  const percent = Math.min(100, motion / maxMotion * 100);
+  
+  $('movement-indicator').style.width = percent + '%';
+  $('movement-value').textContent = Math.round(motion);
+}
+
+function stopRecording() {
+  S.recording = false;
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
+  
+  show('screen-results');
+  showResults();
+}
+
+function showResults() {
+  if (S.measurements.length === 0) {
+    $('result-pd').textContent = '—';
+    $('stat-avg').textContent = '—';
+    $('stat-std').textContent = '—';
+    return;
+  }
+  
+  const pdValues = S.measurements.map(m => m.pdMM);
+  const avg = pdValues.reduce((a, b) => a + b) / pdValues.length;
+  const std = Math.sqrt(pdValues.reduce((sq, n) => sq + (n - avg)**2) / pdValues.length);
+  
+  $('result-pd').textContent = avg.toFixed(1);
+  $('stat-avg').textContent = avg.toFixed(1);
+  $('stat-std').textContent = std.toFixed(2);
+  
+  let allMeas = '';
+  S.measurements.forEach((m, i) => {
+    allMeas += `Frame ${i+1}: ${m.pdMM.toFixed(1)}mm (${m.pdPx.toFixed(0)}px)<br>`;
+  });
+  $('result-all').innerHTML = allMeas;
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
