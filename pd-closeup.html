@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>PD Measurement — Close-up Auto</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+body{background:#0c0c12;color:#e2e2ee;font-family:'Courier New',monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;}
+h1{font-size:20px;font-weight:900;background:linear-gradient(90deg,#00e5ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px;}
+.sub{font-size:11px;color:#666;margin-bottom:20px;text-align:center;line-height:1.5;}
+.btn{width:100%;max-width:320px;padding:16px;border-radius:12px;font-size:15px;letter-spacing:.08em;cursor:pointer;font-family:inherit;border:none;margin-bottom:12px;text-align:center;font-weight:700;transition:all .2s;}
+.btn-primary{background:linear-gradient(135deg,#00e5ff,#a78bfa);color:#000;width:280px;height:280px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:20px;margin:40px auto;}
+.btn-primary:active{transform:scale(.95);}
+.btn-secondary{background:#1e1e2e;border:1px solid #00e5ff66;color:#00e5ff;}
+.btn-retry{background:#ffaa0018;border:1px solid #ffaa0066;color:#ffaa00;}
+.card{background:#13131e;border:1px solid #1e1e2e;border-radius:12px;padding:16px;margin-bottom:12px;width:100%;max-width:320px;}
+.card.result{border-color:#00e57766;background:#0a2e2e;}
+.title{font-size:12px;color:#666;letter-spacing:.1em;margin-bottom:8px;text-transform:uppercase;}
+.value{font-size:48px;font-weight:900;color:#00e5ff;text-align:center;margin:16px 0;}
+.detail{font-size:12px;color:#888;line-height:1.8;margin-top:8px;padding-top:8px;border-top:1px solid #1e1e2e;}
+.loading{text-align:center;margin:40px 0;}
+.spinner{display:inline-block;width:32px;height:32px;border:3px solid #1e1e2e;border-top-color:#00e5ff;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}
+
+.cam-wrap{position:relative;width:100%;max-width:320px;margin-bottom:12px;border-radius:10px;overflow:hidden;border:2px solid #00e5ff66;background:#000;}
+#video{width:100%;height:auto;display:block;aspect-ratio:3/4;object-fit:cover;}
+#canvas{display:none;}
+.instruction{background:#0a2e2e;border:1px solid #00e57766;border-radius:10px;padding:14px;margin-bottom:16px;width:100%;max-width:320px;font-size:13px;line-height:1.6;color:#a78bfa;}
+.hidden{display:none!important;}
+</style>
+</head>
+<body>
+
+<div id="screen-home" class="screen">
+  <h1>PD MEASUREMENT</h1>
+  <div class="sub">Close-up Auto Detection<br>10cm distance</div>
+  <div class="instruction">
+    📸 <strong>Hold phone 10cm from face</strong><br>
+    👁️ <strong>Look above phone</strong> at distance target<br>
+    📍 App will auto-detect pupils & calculate PD
+  </div>
+  <button class="btn btn-primary" id="btn-start">
+    📷<br>TAKE<br>PHOTO
+  </button>
+</div>
+
+<div id="screen-camera" class="screen hidden">
+  <div class="cam-wrap">
+    <video id="video" autoplay playsinline></video>
+  </div>
+  <button class="btn btn-secondary" id="btn-capture">✓ CAPTURE</button>
+  <button class="btn btn-secondary" id="btn-cancel">✗ CANCEL</button>
+</div>
+
+<div id="screen-processing" class="screen hidden">
+  <h1>ANALYZING</h1>
+  <div class="loading">
+    <div class="spinner"></div>
+  </div>
+  <div class="sub" id="status-msg">Detecting eyes...</div>
+</div>
+
+<div id="screen-result" class="screen hidden">
+  <div class="card result">
+    <div class="title">BINOCULAR PD</div>
+    <div class="value" id="result-pd">—</div>
+    <div style="text-align:center;color:#888;font-size:12px;">mm</div>
+    <div class="detail" id="result-detail">—</div>
+  </div>
+  <button class="btn btn-secondary" id="btn-again">✓ TRY AGAIN</button>
+  <button class="btn btn-retry" id="btn-retake">⟳ RETAKE PHOTO</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const S = {
+  capturedImg: null,
+  imgW: 0,
+  imgH: 0,
+  distMM: 100, // 10cm = 100mm
+  focalMM: 5.31, // Front camera focal length
+  sensorWidthMM: 7.21,
+};
+
+let video, canvas, ctx;
+
+function init() {
+  video = $('video');
+  canvas = $('canvas');
+  ctx = canvas.getContext('2d');
+  
+  $('btn-start').addEventListener('click', startCamera);
+  $('btn-capture').addEventListener('click', capturePhoto);
+  $('btn-cancel').addEventListener('click', cancelCamera);
+  $('btn-again').addEventListener('click', goHome);
+  $('btn-retake').addEventListener('click', startCamera);
+}
+
+function show(screenId) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+  $(screenId).classList.remove('hidden');
+}
+
+function goHome() {
+  show('screen-home');
+}
+
+async function startCamera() {
+  show('screen-camera');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1920 } }
+    });
+    video.srcObject = stream;
+  } catch (e) {
+    alert('Camera access denied: ' + e.message);
+    goHome();
+  }
+}
+
+function cancelCamera() {
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
+  goHome();
+}
+
+function capturePhoto() {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(video, 0, 0);
+  
+  canvas.toBlob(blob => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        S.capturedImg = img;
+        S.imgW = img.width;
+        S.imgH = img.height;
+        
+        if (video.srcObject) {
+          video.srcObject.getTracks().forEach(t => t.stop());
+        }
+        
+        show('screen-processing');
+        setTimeout(processImage, 300);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(blob);
+  }, 'image/jpeg', 0.95);
+}
+
+function updateStatus(msg) {
+  $('status-msg').textContent = msg;
+}
+
+async function processImage() {
+  updateStatus('Finding eyes...');
+  
+  try {
+    // Stage 1: Find eye regions
+    const eyes = await findEyes();
+    if (!eyes || eyes.length < 2) {
+      showResult(null, 'Failed to detect eyes. Please retake with better lighting.');
+      return;
+    }
+    
+    updateStatus('Detecting pupils...');
+    
+    // Stage 2: Find pupils in each eye
+    const pupilR = detectPupilCenter(eyes[1].x, eyes[1].y, 60);
+    const pupilL = detectPupilCenter(eyes[0].x, eyes[0].y, 60);
+    
+    if (!pupilR || !pupilL) {
+      showResult(null, 'Failed to detect both pupils. Please retake.');
+      return;
+    }
+    
+    // Stage 3: Calculate PD
+    const pdPx = Math.abs(pupilL.nx - pupilR.nx);
+    const physPxMM = S.sensorWidthMM / S.imgW;
+    const mmPerPx = S.distMM * physPxMM / S.focalMM;
+    const pdMM = pdPx * mmPerPx;
+    
+    showResult({
+      pdMM: pdMM.toFixed(1),
+      pdPx: pdPx.toFixed(0),
+      mmPerPx: mmPerPx.toFixed(4),
+      dist: S.distMM / 10
+    });
+  } catch (e) {
+    console.error(e);
+    showResult(null, 'Detection error: ' + e.message);
+  }
+}
+
+async function findEyes() {
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = S.imgW;
+  tempCanvas.height = S.imgH;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(S.capturedImg, 0, 0);
+  
+  // Search in upper half (where eyes are)
+  const imageData = tempCtx.getImageData(0, 0, S.imgW, Math.floor(S.imgH * 0.6));
+  const data = imageData.data;
+  
+  let darkPixels = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const brightness = (data[i] + data[i+1] + data[i+2]) / 3;
+    if (brightness < 120) {
+      const pixIdx = i / 4;
+      const py = Math.floor(pixIdx / S.imgW);
+      const px = pixIdx % S.imgW;
+      darkPixels.push({ x: px, y: py });
+    }
+  }
+  
+  if (darkPixels.length < 50) return null;
+  
+  // Cluster dark pixels to find two eyes
+  let clusters = [];
+  let used = new Set();
+  
+  darkPixels.forEach((p, idx) => {
+    if (used.has(idx)) return;
+    let cluster = [p];
+    used.add(idx);
+    
+    for (let j = 0; j < darkPixels.length; j++) {
+      if (used.has(j)) continue;
+      const p2 = darkPixels[j];
+      const dist = Math.sqrt(Math.pow(p.x - p2.x, 2) + Math.pow(p.y - p2.y, 2));
+      if (dist < 40) {
+        cluster.push(p2);
+        used.add(j);
+      }
+    }
+    
+    if (cluster.length > 10) clusters.push(cluster);
+  });
+  
+  if (clusters.length < 2) return null;
+  
+  clusters.sort((a, b) => b.length - a.length);
+  
+  const centroid = (cluster) => {
+    let sx = 0, sy = 0;
+    cluster.forEach(p => { sx += p.x; sy += p.y; });
+    return { x: sx / cluster.length, y: sy / cluster.length };
+  };
+  
+  const c1 = centroid(clusters[0]);
+  const c2 = centroid(clusters[1]);
+  const eyes = [c1, c2].sort((a, b) => a.x - b.x);
+  
+  console.log('Eyes found at L:'+eyes[0].x.toFixed(0)+','+eyes[0].y.toFixed(0)+' R:'+eyes[1].x.toFixed(0)+','+eyes[1].y.toFixed(0));
+  return eyes;
+}
+
+function detectPupilCenter(centerX, centerY, searchRadius = 60) {
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = S.imgW;
+  tempCanvas.height = S.imgH;
+  const tempCtx = tempCanvas.getContext('2d');
+  tempCtx.drawImage(S.capturedImg, 0, 0);
+  
+  const x1 = Math.max(0, Math.floor(centerX - searchRadius));
+  const y1 = Math.max(0, Math.floor(centerY - searchRadius));
+  const x2 = Math.min(S.imgW, Math.ceil(centerX + searchRadius));
+  const y2 = Math.min(S.imgH, Math.ceil(centerY + searchRadius));
+  const w = x2 - x1;
+  const h = y2 - y1;
+  
+  if (w < 10 || h < 10) return null;
+  
+  const imageData = tempCtx.getImageData(x1, y1, w, h);
+  const data = imageData.data;
+  
+  let pixels = [];
+  let totalB = 0;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const b = (data[i] + data[i+1] + data[i+2]) / 3;
+    pixels.push({ idx: i/4, b });
+    totalB += b;
+  }
+  
+  const avgB = totalB / pixels.length;
+  pixels.sort((a, b) => a.b - b.b);
+  
+  const minB = pixels[0].b;
+  const contrast = avgB - minB;
+  const tolerance = Math.max(10, Math.min(25, contrast * 0.3));
+  
+  let dark = [];
+  pixels.forEach(p => {
+    if (p.b < minB + tolerance || p.b < 130) {
+      dark.push(p.idx);
+    }
+  });
+  
+  if (dark.length < 3) return null;
+  
+  let sx = 0, sy = 0;
+  dark.forEach(idx => {
+    const py = Math.floor(idx / w);
+    const px = idx % w;
+    sx += px;
+    sy += py;
+  });
+  
+  return { nx: x1 + sx / dark.length, ny: y1 + sy / dark.length };
+}
+
+function showResult(data, error = null) {
+  show('screen-result');
+  
+  if (error || !data) {
+    $('result-pd').textContent = '—';
+    $('result-detail').textContent = error || 'Detection failed';
+    return;
+  }
+  
+  $('result-pd').textContent = data.pdMM;
+  $('result-detail').innerHTML = `
+    <strong>Δ pixels:</strong> ${data.pdPx}px<br>
+    <strong>mm/px:</strong> ${data.mmPerPx}<br>
+    <strong>Distance:</strong> ${data.dist}cm
+  `;
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
