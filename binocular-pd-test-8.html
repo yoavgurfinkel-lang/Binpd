@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Binocular PD Test</title>
+<style>
+  :root{
+    --cream:#faf3e6;
+    --cream-dark:#f0e6d2;
+    --teal:#1f7a72;
+    --teal-dark:#155a54;
+    --ink:#2c2620;
+    --red:#c0392b;
+    --green:#2ecc71;
+    --amber:#e0a12e;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0;padding:0;height:100%;overflow:hidden;
+    background:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    color:var(--ink);
+  }
+  #app{
+    position:fixed;inset:0;
+    display:flex;flex-direction:column;
+    background:var(--ink);
+  }
+  #camWrap{
+    position:relative;flex:1;overflow:hidden;
+    background:#000;
+    display:flex;align-items:center;justify-content:center;
+  }
+  video{display:none;}
+  canvas#view{
+    width:100%;height:100%;object-fit:cover;display:block;
+  }
+  #overlay{
+    position:absolute;inset:0;pointer-events:none;
+  }
+  #statusBar{
+    position:absolute;top:0;left:0;right:0;
+    padding:14px 16px 10px;
+    background:linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,0));
+    color:#fff;text-align:center;
+    font-size:15px;font-weight:600;letter-spacing:.2px;
+  }
+  #statusBar .sub{
+    font-size:12.5px;font-weight:400;opacity:.85;margin-top:2px;
+  }
+  #pillRow{
+    display:flex;gap:8px;justify-content:center;margin-top:8px;
+  }
+  .pill{
+    padding:4px 10px;border-radius:20px;font-size:11.5px;font-weight:600;
+    background:rgba(255,255,255,.18);color:#fff;
+    border:1.5px solid rgba(255,255,255,.35);
+  }
+  .pill.good{background:rgba(46,204,113,.28);border-color:var(--green);}
+  .pill.bad{background:rgba(192,57,43,.28);border-color:var(--red);}
+  #debugLine{
+    font-size:10.5px;color:rgba(255,255,255,.7);margin-top:6px;font-family:monospace;
+  }
+  #bottomBar{
+    background:var(--cream);
+    padding:16px 18px calc(18px + env(safe-area-inset-bottom));
+    border-top:3px solid var(--teal);
+    display:flex;flex-direction:column;align-items:center;gap:12px;
+  }
+  #eyeLabel{
+    font-size:14px;font-weight:700;color:var(--teal-dark);
+    text-transform:uppercase;letter-spacing:1px;
+  }
+  #captureBtn{
+    width:100%;max-width:420px;
+    padding:16px;border:none;border-radius:14px;
+    font-size:17px;font-weight:700;letter-spacing:.3px;
+    background:#ccc;color:#888;
+    transition:background .15s, color .15s, transform .1s;
+  }
+  #captureBtn.ready{
+    background:var(--teal);color:#fff;
+  }
+  #captureBtn.ready:active{transform:scale(.97);}
+  #secondaryRow{
+    display:flex;gap:10px;width:100%;max-width:420px;
+  }
+  .btn-sec{
+    flex:1;padding:11px;border-radius:10px;border:1.5px solid var(--teal);
+    background:transparent;color:var(--teal-dark);font-weight:600;font-size:13.5px;
+  }
+  .btn-sec:active{background:var(--cream-dark);}
+  #resultScreen{
+    position:absolute;inset:0;background:var(--cream);
+    display:none;flex-direction:column;align-items:center;justify-content:center;
+    padding:24px;text-align:center;z-index:10;
+  }
+  #resultScreen.show{display:flex;}
+  #pdValue{
+    font-size:64px;font-weight:800;color:var(--teal-dark);line-height:1;
+  }
+  #pdUnit{font-size:20px;font-weight:600;color:var(--teal);margin-bottom:6px;}
+  #pdWarning{
+    margin-top:10px;padding:10px 16px;border-radius:10px;
+    background:#fdecea;color:var(--red);font-size:13.5px;font-weight:600;
+    display:none;max-width:340px;
+  }
+  #pdWarning.show{display:block;}
+  #resultBtns{display:flex;gap:12px;margin-top:26px;width:100%;max-width:360px;}
+  #resultBtns button{
+    flex:1;padding:14px;border-radius:12px;border:none;
+    font-size:15px;font-weight:700;
+  }
+  #redoBtn{background:var(--cream-dark);color:var(--ink);border:1.5px solid var(--teal);}
+  #saveBtn{background:var(--teal);color:#fff;}
+  #detailLine{font-size:12px;color:#7a6f5f;margin-top:14px;}
+  #startScreen{
+    position:absolute;inset:0;background:var(--cream);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    padding:28px;text-align:center;z-index:20;gap:16px;
+  }
+  #startScreen h1{font-size:20px;color:var(--teal-dark);margin:0;}
+  #startScreen p{font-size:13.5px;color:#5a5040;line-height:1.5;margin:0;max-width:320px;}
+  #startBtn{
+    padding:15px 34px;border:none;border-radius:12px;background:var(--teal);
+    color:#fff;font-size:16px;font-weight:700;
+  }
+  #flipBtn{
+    position:absolute;top:14px;right:14px;z-index:5;
+    width:44px;height:44px;border-radius:50%;border:none;
+    background:rgba(0,0,0,.45);color:#fff;font-size:20px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  #flipBtn:active{background:rgba(0,0,0,.65);}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="camWrap">
+    <video id="video" playsinline muted></video>
+    <canvas id="view"></canvas>
+    <button id="flipBtn" title="Flip camera">⟲</button>
+    <div id="overlay">
+      <div id="statusBar">
+        <div id="eyeLabel">Right eye</div>
+        <div class="sub" id="instrLine">Center pupil in the cross</div>
+        <div id="pillRow">
+          <div class="pill" id="alignPill">align</div>
+          <div class="pill" id="distPill">distance</div>
+        </div>
+        <div id="debugLine"></div>
+      </div>
+    </div>
+
+    <div id="resultScreen">
+      <div id="pdUnit">MEASURED PD</div>
+      <div id="pdValue">--</div>
+      <div style="font-size:16px;color:#7a6f5f;margin-top:4px;">mm</div>
+      <div id="pdWarning">Value is outside the typical 45–75mm range. Please redo the measurement.</div>
+      <div id="detailLine"></div>
+      <div id="resultBtns">
+        <button id="redoBtn">Redo</button>
+        <button id="saveBtn">Done</button>
+      </div>
+    </div>
+
+    <div id="startScreen">
+      <h1>Binocular PD Test</h1>
+      <p>First, hold at the closest distance where the image stays sharp (~10cm) and hold still to calibrate distance. Then point at the RIGHT eye: it beeps and captures automatically when aligned. After each capture, bring the phone to a comfortable distance to check the marker — correct it with a tap if needed — then tap Continue. Slide to the LEFT eye and repeat.</p>
+      <p style="font-size:12px;color:#a08a5f;">Needs camera permission. Best in good, even lighting. Tap ⟲ to cycle cameras and find your phone's closest-focusing lens (often labelled "macro"). Alignment while up close is audio-only — no need to see the screen until the review step.</p>
+      <button id="startBtn">Start Test</button>
+    </div>
+  </div>
+
+  <div id="bottomBar">
+    <button id="captureBtn" disabled>Hold steady…</button>
+    <div id="secondaryRow">
+      <button class="btn-sec" id="resetBtn">Reset</button>
+      <button class="btn-sec" id="recalBtn">Recalibrate distance</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="proc" style="display:none;"></canvas>
+<canvas id="snap" style="display:none;"></canvas>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- Tunable constants ----------
+  const IRIS_MM = 11.7;                 // average human iris horizontal diameter
+  const IRIS_SCAN_RANGE = 170;          // how far (px) to scan outward for the limbus edge
+  const ALIGN_TOL_FRAC = 0.06;          // pupil must be within 6% of frame width from center
+  const STABLE_FRAMES_NEEDED = 14;      // consecutive good frames before capture (~0.9s) — a bit longer since close range amplifies hand tremor
+  const AUTO_CAPTURE_DELAY_MS = 350;    // extra confirm delay after beep before auto-firing capture
+  const PROC_W = 480;                   // processing resolution (perf vs accuracy tradeoff)
+  const BLOCK = 40;                     // block-matching patch size (px, at PROC_W scale)
+  const SEARCH = 18;                    // block-matching search radius (px)
+  const PD_MIN = 45, PD_MAX = 75;
+  // default distance band (used only until calibrated) — replaced by a real calibration
+  // measured against your actual working distance the first time you use the app
+  let IRIS_PX_MIN = 55, IRIS_PX_MAX = 300;
+  let calibrated = false;
+
+  // ---------- State ----------
+  let stream, video, viewCanvas, viewCtx, procCanvas, procCtx;
+  let procW, procH, dispScale=1;
+  let phase = 'calibrate';       // calibrate -> right -> tracking -> left -> result
+  let stableCount = 0;
+  let prevGray = null;
+  let accumPxX = 0, accumPxY = 0;   // accumulated pixel displacement during slide
+  let mmPerPxRight = null, mmPerPxLeft = null;
+  let running = false;
+  let lastPupil = null;
+  let facingMode = 'environment';
+  let audioCtx = null;
+  let wasReady = false;
+  let lastGoodNow = false;
+  let autoCaptureTimer = null;
+  let videoDevices = [];
+  let currentDeviceIndex = -1;
+  let snapCanvas, snapCtx;
+  let reviewGray = null, reviewPupilProc = null, reviewVW = 0, reviewVH = 0;
+
+  const el = id => document.getElementById(id);
+
+  function initDom(){
+    video = el('video');
+    viewCanvas = el('view');
+    viewCtx = viewCanvas.getContext('2d', {willReadFrequently:true});
+    procCanvas = el('proc');
+    procCtx = procCanvas.getContext('2d', {willReadFrequently:true});
+    snapCanvas = el('snap');
+    snapCtx = snapCanvas.getContext('2d', {willReadFrequently:true});
+
+    el('startBtn').addEventListener('click', startCamera);
+    el('captureBtn').addEventListener('click', onCapture);
+    el('resetBtn').addEventListener('click', resetAll);
+    el('redoBtn').addEventListener('click', resetAll);
+    el('saveBtn').addEventListener('click', ()=>{ el('resultScreen').classList.remove('show'); });
+    el('flipBtn').addEventListener('click', cycleCamera);
+    el('recalBtn').addEventListener('click', startCalibration);
+    viewCanvas.addEventListener('pointerdown', onCanvasTap);
+  }
+
+  async function startCamera(){
+    try{
+      audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      await openStream({ facingMode:{ideal:facingMode} });
+      await refreshDeviceList();
+      el('startScreen').style.display = 'none';
+      setEyeLabel('Calibrate distance', 'Hold at the closest sharp-focus distance (~10cm), hold still');
+      running = true;
+      requestAnimationFrame(loop);
+    }catch(err){
+      alert('Camera error: '+err.message+'\n\nMake sure this page is served over HTTPS and camera permission is allowed.');
+    }
+  }
+
+  async function refreshDeviceList(){
+    try{
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      videoDevices = devices.filter(d=>d.kind==='videoinput');
+      const curId = stream.getVideoTracks()[0].getSettings().deviceId;
+      currentDeviceIndex = videoDevices.findIndex(d=>d.deviceId===curId);
+    }catch(e){ /* labels may be unavailable on some browsers; cycling falls back to facingMode toggle */ }
+  }
+
+  async function openStream(videoConstraints){
+    clearTimeout(autoCaptureTimer);
+    wasReady = false;
+    if(stream){ stream.getTracks().forEach(t=>t.stop()); }
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: Object.assign({ width:{ideal:1280}, height:{ideal:960} }, videoConstraints),
+      audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    prevGray = null; // avoid a spurious jump in block-matching after switching cameras
+    trackState.locked = false; trackState.framesSinceSeen = 99; trackState.manual = false;
+    try{
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities ? track.getCapabilities() : {};
+      const advanced = {};
+      if(caps.focusMode && caps.focusMode.includes('continuous')) advanced.focusMode = 'continuous';
+      if(Object.keys(advanced).length) await track.applyConstraints({advanced:[advanced]});
+    }catch(e){ /* focus constraints not supported on this device/browser — fine, continuous AF is usually default */ }
+  }
+
+  async function cycleCamera(){
+    try{
+      if(videoDevices.length > 1){
+        currentDeviceIndex = (currentDeviceIndex+1) % videoDevices.length;
+        const dev = videoDevices[currentDeviceIndex];
+        await openStream({ deviceId:{exact:dev.deviceId} });
+        showToast(dev.label || ('Camera '+(currentDeviceIndex+1)+'/'+videoDevices.length));
+      } else {
+        facingMode = (facingMode==='environment') ? 'user' : 'environment';
+        await openStream({ facingMode:{ideal:facingMode} });
+        showToast(facingMode==='user' ? 'Front camera' : 'Back camera');
+      }
+    }catch(err){
+      showToast('Switch failed: '+err.message);
+    }
+  }
+
+  function showToast(msg){
+    let t = el('toast');
+    if(!t){
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.style.cssText = 'position:absolute;bottom:100px;left:50%;transform:translateX(-50%);'+
+        'background:rgba(0,0,0,.75);color:#fff;padding:8px 16px;border-radius:20px;font-size:13px;z-index:6;max-width:80%;text-align:center;';
+      el('camWrap').appendChild(t);
+    }
+    t.textContent = msg;
+    t.style.opacity = '1';
+    clearTimeout(t._hideTimer);
+    t._hideTimer = setTimeout(()=>{ t.style.opacity='0'; }, 1800);
+  }
+
+  function beep(freq, ms){
+    if(!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.frequency.value = freq || 880;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.35, audioCtx.currentTime+0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+(ms||160)/1000);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime+((ms||160)/1000)+0.02);
+  }
+
+  function resetAll(){
+    phase = calibrated ? 'right' : 'calibrate';
+    stableCount = 0;
+    wasReady = false;
+    lastGoodNow = false;
+    clearTimeout(autoCaptureTimer);
+    trackState.locked = false; trackState.framesSinceSeen = 99; trackState.manual = false;
+    accumPxX = 0; accumPxY = 0;
+    mmPerPxRight = null; mmPerPxLeft = null;
+    prevGray = null;
+    el('resultScreen').classList.remove('show');
+    if(phase==='calibrate'){
+      setEyeLabel('Calibrate distance', 'Hold at the closest sharp-focus distance (~10cm), hold still');
+    } else {
+      setEyeLabel('Right eye', 'Center pupil in the cross');
+    }
+    setCaptureEnabled(false);
+  }
+
+  function startCalibration(){
+    calibrated = false;
+    resetAll();
+  }
+
+  function setEyeLabel(main, sub){
+    el('eyeLabel').textContent = main;
+    el('instrLine').textContent = sub;
+  }
+
+  function setCaptureEnabled(on){
+    const btn = el('captureBtn');
+    btn.disabled = !on;
+    btn.classList.toggle('ready', on);
+    btn.textContent = on ? 'Capture' : 'Hold steady…';
+  }
+
+  // ---------- Main loop ----------
+  function loop(){
+    if(!running) return;
+    const isReview = (phase==='reviewCalibrate'||phase==='reviewRight'||phase==='reviewLeft');
+    if(isReview){
+      renderReview();
+      requestAnimationFrame(loop);
+      return;
+    }
+    if(video.videoWidth){
+      drawDisplay();
+      const gray = grabProcessedGray();
+      const pupil = findPupil(gray);
+      lastPupil = pupil;
+      let irisPx = null;
+      if(pupil) irisPx = estimateIrisDiameter(gray, pupil);
+
+      const distOk = phase==='calibrate' ? true : (irisPx!=null && irisPx>=IRIS_PX_MIN && irisPx<=IRIS_PX_MAX);
+      const alignOk = pupil!=null && isAligned(pupil);
+
+      updatePills(pupil!=null, alignOk, distOk, irisPx);
+      drawOverlay(pupil, alignOk && distOk);
+
+      const dbg = el('debugLine');
+      if(lastDebug){
+        dbg.textContent = `iris:${irisPx==null?'-':irisPx}px  c:${lastDebug.contrast.toFixed(0)} round:${lastDebug.aspect.toFixed(2)} ring:${lastDebug.ringMean.toFixed(0)}`;
+      } else {
+        dbg.textContent = 'no dark blob candidates found';
+      }
+
+      if(phase==='tracking' && prevGray){
+        const shift = blockMatch(prevGray, gray);
+        accumPxX += shift.dx;
+        accumPxY += shift.dy;
+      }
+      prevGray = gray;
+
+      const goodNow = alignOk && distOk;
+      lastGoodNow = goodNow;
+      stableCount = goodNow ? stableCount+1 : 0;
+      const readyNow = stableCount >= STABLE_FRAMES_NEEDED && (phase==='calibrate' || phase==='right' || phase==='tracking' || phase==='left');
+      setCaptureEnabled(readyNow);
+      if(readyNow && !wasReady){
+        beep(950, 150);
+        el('captureBtn').textContent = 'Capturing…';
+        clearTimeout(autoCaptureTimer);
+        autoCaptureTimer = setTimeout(()=>{
+          if(lastGoodNow) onCapture();
+        }, AUTO_CAPTURE_DELAY_MS);
+      }
+      if(!goodNow){
+        clearTimeout(autoCaptureTimer);
+      }
+      wasReady = readyNow;
+
+      if(phase==='tracking'){
+        // once left eye becomes aligned, switch label to "left eye" so capture applies to left
+        if(stableCount >= STABLE_FRAMES_NEEDED){
+          phase = 'left';
+          setEyeLabel('Left eye', 'Hold steady — it will beep and capture automatically');
+        } else {
+          setEyeLabel('Sliding to Left eye', 'Move the phone sideways, keep same distance');
+        }
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function renderReview(){
+    if(viewCanvas.width !== viewCanvas.clientWidth*devicePixelRatio){
+      viewCanvas.width = viewCanvas.clientWidth*devicePixelRatio;
+      viewCanvas.height = viewCanvas.clientHeight*devicePixelRatio;
+    }
+    const vw = reviewVW, vh = reviewVH;
+    const cw=viewCanvas.width, ch=viewCanvas.height;
+    const scale = Math.max(cw/vw, ch/vh);
+    const dw=vw*scale, dh=vh*scale;
+    const dx=(cw-dw)/2, dy=(ch-dh)/2;
+    if(facingMode==='user'){
+      viewCtx.save();
+      viewCtx.translate(cw,0);
+      viewCtx.scale(-1,1);
+      viewCtx.drawImage(snapCanvas, dx, dy, dw, dh);
+      viewCtx.restore();
+    } else {
+      viewCtx.drawImage(snapCanvas, dx, dy, dw, dh);
+    }
+    dispScale = scale;
+
+    if(reviewPupilProc){
+      const scaleProcToVid = vw/procW;
+      let px = reviewPupilProc.x*scaleProcToVid*dispScale + dx;
+      const py = reviewPupilProc.y*scaleProcToVid*dispScale + dy;
+      if(facingMode==='user') px = cw - px;
+      viewCtx.save();
+      viewCtx.strokeStyle = '#e0a12e';
+      viewCtx.lineWidth = 3;
+      viewCtx.beginPath();
+      viewCtx.arc(px,py,16,0,Math.PI*2);
+      viewCtx.stroke();
+      viewCtx.fillStyle = 'rgba(224,161,46,.9)';
+      viewCtx.beginPath();
+      viewCtx.arc(px,py,5,0,Math.PI*2);
+      viewCtx.fill();
+      viewCtx.restore();
+    }
+  }
+
+  function drawDisplay(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if(viewCanvas.width !== viewCanvas.clientWidth*devicePixelRatio){
+      viewCanvas.width = viewCanvas.clientWidth*devicePixelRatio;
+      viewCanvas.height = viewCanvas.clientHeight*devicePixelRatio;
+    }
+    // cover-fit draw
+    const cw=viewCanvas.width, ch=viewCanvas.height;
+    const scale = Math.max(cw/vw, ch/vh);
+    const dw=vw*scale, dh=vh*scale;
+    const dx=(cw-dw)/2, dy=(ch-dh)/2;
+    if(facingMode==='user'){
+      viewCtx.save();
+      viewCtx.translate(cw,0);
+      viewCtx.scale(-1,1);
+      viewCtx.drawImage(video, dx, dy, dw, dh);
+      viewCtx.restore();
+    } else {
+      viewCtx.drawImage(video, dx, dy, dw, dh);
+    }
+    dispScale = scale; // px on screen per px in source video
+  }
+
+  function grabProcessedGray(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    procW = PROC_W;
+    procH = Math.round(PROC_W * vh/vw);
+    if(procCanvas.width!==procW || procCanvas.height!==procH){
+      procCanvas.width = procW; procCanvas.height = procH;
+    }
+    procCtx.drawImage(video, 0,0, procW, procH);
+    const data = procCtx.getImageData(0,0,procW,procH).data;
+    const gray = new Uint8ClampedArray(procW*procH);
+    for(let i=0, p=0; i<data.length; i+=4, p++){
+      gray[p] = (data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114)|0;
+    }
+    return gray;
+  }
+
+  // ---------- Pupil detection ----------
+  // Instead of "darkest region in ROI" (which locks onto eyebrows/lashes/shadow),
+  // score candidate dark blobs by contrast + roundness, and once locked, track
+  // locally frame-to-frame so it doesn't re-scan the whole ROI every frame.
+  const CONTRAST_MIN = 10;   // blob must be this much darker than its surroundings
+  const ASPECT_MIN = 0.42;   // roundness floor (1.0 = perfect circle); rejects eyebrow/lash streaks
+  const RING_BRIGHT_MIN = 95; // surrounding area must be reasonably bright (sclera-like), rejects eyebrow-on-skin
+  let trackState = {locked:false, x:0, y:0, framesSinceSeen:99, manual:false};
+  let lastDebug = null;
+
+  function clamp(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+
+  function onCanvasTap(e){
+    if(!running) return;
+    const isReview = (phase==='reviewCalibrate'||phase==='reviewRight'||phase==='reviewLeft');
+    if(!isReview && !video.videoWidth) return;
+    const rect = viewCanvas.getBoundingClientRect();
+    const scaleX = viewCanvas.width/rect.width, scaleY = viewCanvas.height/rect.height;
+    const canvasX = (e.clientX-rect.left)*scaleX;
+    const canvasY = (e.clientY-rect.top)*scaleY;
+    const vw = isReview ? reviewVW : video.videoWidth;
+    const vh = isReview ? reviewVH : video.videoHeight;
+    const scaleProcToVid = vw/procW;
+    const cw=viewCanvas.width, ch=viewCanvas.height;
+    const dx=(cw - vw*dispScale)/2, dy=(ch - vh*dispScale)/2;
+    let ux = (facingMode==='user') ? (cw-canvasX) : canvasX;
+    let procX = clamp(Math.round((ux-dx)/(scaleProcToVid*dispScale)), 0, procW-1);
+    let procY = clamp(Math.round((canvasY-dy)/(scaleProcToVid*dispScale)), 0, procH-1);
+    if(isReview){
+      reviewPupilProc = {x:procX, y:procY};
+      showToast('Marker corrected');
+    } else {
+      trackState.x=procX; trackState.y=procY; trackState.locked=true; trackState.framesSinceSeen=0; trackState.manual=true;
+      showToast('Marker set — hold still');
+    }
+  }
+
+  // Analyze a window for the darkest connected blob inside it; returns null if not eye-like
+  function analyzeBlob(gray, wx0, wy0, ww, wh){
+    wx0 = clamp(wx0,0,procW-ww-1); wy0 = clamp(wy0,0,procH-wh-1);
+    let minV=255, sum=0, count=0, sx=wx0, sy=wy0, best=256;
+    for(let y=wy0;y<wy0+wh;y++){
+      for(let x=wx0;x<wx0+ww;x++){
+        const v = gray[y*procW+x];
+        sum+=v; count++;
+        if(v<best){ best=v; sx=x; sy=y; }
+      }
+    }
+    const meanV = sum/count;
+    const thresh = best + (meanV-best)*0.45;
+    // BFS flood fill from darkest pixel, constrained to threshold and window bounds
+    const visited = new Uint8Array(ww*wh);
+    let qx=[sx], qy=[sy];
+    visited[(sy-wy0)*ww+(sx-wx0)]=1;
+    let area=0,sumX=0,sumY=0,blobSum=0,minX=sx,maxX=sx,minY=sy,maxY=sy,qi=0;
+    while(qi<qx.length){
+      const x=qx[qi], y=qy[qi]; qi++;
+      const v = gray[y*procW+x];
+      area++; sumX+=x; sumY+=y; blobSum+=v;
+      if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y;
+      const nb = [[x+1,y],[x-1,y],[x,y+1],[x,y-1]];
+      for(let k=0;k<4;k++){
+        const nx=nb[k][0], ny=nb[k][1];
+        if(nx<wx0||nx>=wx0+ww||ny<wy0||ny>=wy0+wh) continue;
+        const idx=(ny-wy0)*ww+(nx-wx0);
+        if(visited[idx]) continue;
+        visited[idx]=1;
+        if(gray[ny*procW+nx] <= thresh){ qx.push(nx); qy.push(ny); }
+      }
+    }
+    if(area<4 || area>ww*wh*0.6) return null; // too small (noise) or fills whole window (no contrast / closed eye / shadow)
+    const width=maxX-minX+1, height=maxY-minY+1;
+    const aspect = Math.min(width,height)/Math.max(width,height);
+    const blobMean = blobSum/area;
+    const ringMean = (sum-blobSum)/Math.max(1,(count-area));
+    const contrast = ringMean-blobMean;
+    const touchesEdge = (minX<=wx0||maxX>=wx0+ww-1||minY<=wy0||maxY>=wy0+wh-1);
+    const score = contrast*aspect*(ringMean/255)*(touchesEdge?0.5:1);
+    return {cx:sumX/area, cy:sumY/area, area, aspect, contrast, ringMean, touchesEdge, score};
+  }
+
+  function findPupil(gray){
+    let winner = null;
+    let bestSeen = null; // best candidate regardless of pass/fail, for debug display
+
+    function consider(r){
+      if(!r) return;
+      if(!bestSeen || r.score>bestSeen.score) bestSeen = r;
+    }
+
+    if(trackState.locked && trackState.manual){
+      // manual anchor: trust the user's tap. Refine loosely, never fall back to cold-start.
+      const R = 30;
+      const r = analyzeBlob(gray, Math.round(trackState.x-R), Math.round(trackState.y-R), R*2, R*2);
+      consider(r);
+      winner = r || {cx:trackState.x, cy:trackState.y, area:0, aspect:1, contrast:0, ringMean:0, score:0};
+    } else if(trackState.locked && trackState.framesSinceSeen < 6){
+      // warm: search a small window around the last known position only
+      const R = 30;
+      const r = analyzeBlob(gray, Math.round(trackState.x-R), Math.round(trackState.y-R), R*2, R*2);
+      consider(r);
+      if(r && r.contrast>=CONTRAST_MIN && r.aspect>=ASPECT_MIN && r.ringMean>=RING_BRIGHT_MIN) winner = r;
+    }
+
+    if(!winner && !trackState.manual){
+      // cold start / lost lock: coarse grid scan of the central ROI, score the darkest candidates
+      const roiW = Math.round(procW*0.65), roiH = Math.round(procH*0.65);
+      const x0 = Math.round((procW-roiW)/2), y0 = Math.round((procH-roiH)/2);
+      const step = 18;
+      let cands = [];
+      for(let y=y0+10; y<y0+roiH-10; y+=step){
+        for(let x=x0+10; x<x0+roiW-10; x+=step){
+          let s=0,n=0;
+          for(let dy=-2;dy<=2;dy++){
+            for(let dx=-2;dx<=2;dx++){ s+=gray[(y+dy)*procW+(x+dx)]; n++; }
+          }
+          cands.push({x,y,m:s/n});
+        }
+      }
+      cands.sort((a,b)=>a.m-b.m);
+      const top = cands.slice(0, 10);
+      let bestScore = -Infinity;
+      for(const c of top){
+        const R = 26;
+        const r = analyzeBlob(gray, c.x-R, c.y-R, R*2, R*2);
+        consider(r);
+        if(r && r.contrast>=CONTRAST_MIN && r.aspect>=ASPECT_MIN && r.ringMean>=RING_BRIGHT_MIN && r.score>bestScore){
+          bestScore = r.score; winner = r;
+        }
+      }
+    }
+
+    lastDebug = bestSeen || (trackState.manual ? winner : null);
+
+    if(winner){
+      trackState.x = winner.cx; trackState.y = winner.cy;
+      trackState.locked = true; trackState.framesSinceSeen = 0;
+      return {x:winner.cx, y:winner.cy, confidence:winner.score};
+    } else {
+      trackState.framesSinceSeen++;
+      if(trackState.framesSinceSeen>15){ trackState.locked=false; trackState.manual=false; }
+      return null;
+    }
+  }
+
+  // From pupil center, scan outward horizontally to find iris/sclera edge (limbus)
+  function estimateIrisDiameter(gray, pupil){
+    const cx = Math.round(pupil.x), cy = Math.round(pupil.y);
+    const row = cy;
+    if(row<1 || row>=procH-1) return null;
+    // average intensity baseline at pupil (dark)
+    // scan left
+    let leftEdge = null;
+    let prevVal = gray[row*procW+cx];
+    for(let x=cx; x>Math.max(0,cx-IRIS_SCAN_RANGE); x--){
+      const v = gray[row*procW+x];
+      if(v - prevVal > 35){ leftEdge = x; break; }
+      prevVal = v;
+    }
+    let rightEdge = null;
+    prevVal = gray[row*procW+cx];
+    for(let x=cx; x<Math.min(procW-1,cx+IRIS_SCAN_RANGE); x++){
+      const v = gray[row*procW+x];
+      if(v - prevVal > 35){ rightEdge = x; break; }
+      prevVal = v;
+    }
+    if(leftEdge==null || rightEdge==null) return null;
+    return rightEdge - leftEdge;
+  }
+
+  function isAligned(pupil){
+    const dx = Math.abs(pupil.x - procW/2);
+    const dy = Math.abs(pupil.y - procH/2);
+    return dx < procW*ALIGN_TOL_FRAC && dy < procW*ALIGN_TOL_FRAC;
+  }
+
+  function updatePills(pupilFound, alignOk, distOk, irisPx){
+    const ap = el('alignPill'), dp = el('distPill');
+    if(!pupilFound){
+      ap.textContent = 'find eye';
+      ap.className = 'pill bad';
+    } else {
+      ap.textContent = alignOk ? 'aligned ✓' : 'align';
+      ap.className = 'pill' + (alignOk?' good':' bad');
+    }
+    if(irisPx==null){
+      dp.textContent = 'distance';
+      dp.className = 'pill bad';
+    } else if(distOk){
+      dp.textContent = 'distance ✓';
+      dp.className = 'pill good';
+    } else {
+      dp.textContent = irisPx < IRIS_PX_MIN ? 'move closer' : 'move back';
+      dp.className = 'pill bad';
+    }
+  }
+
+  function drawOverlay(pupil, good){
+    const cw = viewCanvas.width, ch = viewCanvas.height;
+    const ctx = viewCtx;
+    const cx = cw/2, cy = ch/2;
+    const size = Math.min(cw,ch)*0.09;
+    ctx.save();
+    ctx.strokeStyle = good ? '#2ecc71' : '#ffffff';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(cx-size, cy); ctx.lineTo(cx+size, cy);
+    ctx.moveTo(cx, cy-size); ctx.lineTo(cx, cy+size);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx,cy,size*0.55,0,Math.PI*2);
+    ctx.stroke();
+
+    if(pupil){
+      // map proc-space pupil coords back to canvas display coords
+      const vw = video.videoWidth, vh=video.videoHeight;
+      const scaleProcToVid = vw/procW;
+      const dx=(cw - vw*dispScale)/2, dy=(ch - vh*dispScale)/2;
+      let px = pupil.x*scaleProcToVid*dispScale + dx;
+      const py = pupil.y*scaleProcToVid*dispScale + dy;
+      if(facingMode==='user') px = cw - px;
+      ctx.fillStyle = good ? 'rgba(46,204,113,.9)' : 'rgba(255,80,80,.85)';
+      ctx.beginPath();
+      ctx.arc(px,py,6,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Simple block-matching: find shift (dx,dy) of a center block in `curr` relative to `prev`
+  function blockMatch(prev, curr){
+    const bx = Math.round(procW/2 - BLOCK/2), by = Math.round(procH/2 - BLOCK/2);
+    let bestSad = Infinity, bestDx=0, bestDy=0;
+    for(let dy=-SEARCH; dy<=SEARCH; dy+=2){
+      for(let dx=-SEARCH; dx<=SEARCH; dx+=2){
+        const sx = bx+dx, sy = by+dy;
+        if(sx<0||sy<0||sx+BLOCK>=procW||sy+BLOCK>=procH) continue;
+        let sad=0;
+        for(let y=0;y<BLOCK;y+=4){
+          for(let x=0;x<BLOCK;x+=4){
+            sad += Math.abs(curr[(by+y)*procW+(bx+x)] - prev[(sy+y)*procW+(sx+x)]);
+          }
+        }
+        if(sad<bestSad){ bestSad=sad; bestDx=dx; bestDy=dy; }
+      }
+    }
+    // dx,dy is where curr-block matched inside prev => camera moved by (dx,dy) in proc px between frames
+    return {dx:bestDx, dy:bestDy};
+  }
+
+  function captureSnapshot(){
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if(snapCanvas.width!==vw || snapCanvas.height!==vh){ snapCanvas.width=vw; snapCanvas.height=vh; }
+    snapCtx.drawImage(video, 0, 0, vw, vh);
+    reviewVW = vw; reviewVH = vh;
+    reviewGray = prevGray; // frame captured at the moment of the auto-capture
+    reviewPupilProc = lastPupil ? {x:lastPupil.x, y:lastPupil.y} : {x:procW/2, y:procH/2};
+  }
+
+  function onCapture(){
+    clearTimeout(autoCaptureTimer);
+    if(phase==='calibrate'){
+      captureSnapshot();
+      phase = 'reviewCalibrate';
+      setEyeLabel('Check distance marker', 'Bring the phone to a comfortable distance. Tap your pupil to correct if needed, then tap Continue.');
+      setCaptureEnabled(true);
+      el('captureBtn').textContent = 'Continue';
+      beep(1300, 90); setTimeout(()=>beep(1300,90), 140);
+    } else if(phase==='right'){
+      captureSnapshot();
+      phase = 'reviewRight';
+      setEyeLabel('Check Right eye marker', 'Bring the phone to a comfortable distance. Tap your pupil to correct if needed, then tap Continue.');
+      setCaptureEnabled(true);
+      el('captureBtn').textContent = 'Continue';
+      beep(1300, 90); setTimeout(()=>beep(1300,90), 140);
+    } else if(phase==='left'){
+      captureSnapshot();
+      phase = 'reviewLeft';
+      setEyeLabel('Check Left eye marker', 'Bring the phone to a comfortable distance. Tap your pupil to correct if needed, then tap Continue.');
+      setCaptureEnabled(true);
+      el('captureBtn').textContent = 'Continue';
+      beep(1300, 90); setTimeout(()=>beep(1300,90), 140);
+    } else if(phase==='reviewCalibrate' || phase==='reviewRight' || phase==='reviewLeft'){
+      confirmReview();
+    }
+  }
+
+  function confirmReview(){
+    const irisPx = reviewGray && reviewPupilProc ? estimateIrisDiameter(reviewGray, reviewPupilProc) : null;
+
+    if(phase==='reviewCalibrate'){
+      if(irisPx){ IRIS_PX_MIN = irisPx*0.78; IRIS_PX_MAX = irisPx*1.28; calibrated = true; }
+      stableCount = 0; wasReady = false;
+      trackState.locked = false; trackState.framesSinceSeen = 99; trackState.manual = false;
+      prevGray = null;
+      phase = 'right';
+      setEyeLabel('Right eye', 'Center pupil in the cross');
+      setCaptureEnabled(false);
+    } else if(phase==='reviewRight'){
+      mmPerPxRight = irisPx ? IRIS_MM/irisPx : null;
+      accumPxX = 0; accumPxY = 0;
+      stableCount = 0; wasReady = false;
+      trackState.locked = false; trackState.framesSinceSeen = 99; trackState.manual = false;
+      prevGray = null;
+      phase = 'tracking';
+      setEyeLabel('Sliding to Left eye', 'Move the phone sideways, keep same distance');
+      setCaptureEnabled(false);
+    } else if(phase==='reviewLeft'){
+      mmPerPxLeft = irisPx ? IRIS_MM/irisPx : null;
+      finishAndShowResult();
+    }
+  }
+
+  function finishAndShowResult(){
+    running = false;
+    let mmPerPx;
+    if(mmPerPxRight && mmPerPxLeft) mmPerPx = (mmPerPxRight+mmPerPxLeft)/2;
+    else mmPerPx = mmPerPxRight || mmPerPxLeft;
+
+    const pxDist = Math.sqrt(accumPxX*accumPxX + accumPxY*accumPxY);
+    let pd = mmPerPx ? pxDist*mmPerPx : null;
+
+    const valEl = el('pdValue'), warnEl = el('pdWarning'), detailEl = el('detailLine');
+    if(pd==null){
+      valEl.textContent = '—';
+      detailEl.textContent = 'Could not compute a scale reference. Please redo with better lighting.';
+    } else {
+      valEl.textContent = pd.toFixed(1);
+      detailEl.textContent = `tracked ${pxDist.toFixed(0)}px · scale ${mmPerPx.toFixed(3)}mm/px`;
+      if(pd < PD_MIN || pd > PD_MAX){
+        warnEl.classList.add('show');
+      } else {
+        warnEl.classList.remove('show');
+      }
+    }
+    el('resultScreen').classList.add('show');
+  }
+
+  window.addEventListener('DOMContentLoaded', initDom);
+})();
+</script>
+</body>
+</html>
